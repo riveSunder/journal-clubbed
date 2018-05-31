@@ -20,8 +20,8 @@ import matplotlib.pyplot as plt
 # hyperparameters
 mySeed = 1337
 
-dispIt = 40
-maxSteps = 200
+dispIt = 20
+maxSteps = 800
 dORate = 0.4
 batchSize = 4
 lR = 3e-4
@@ -31,8 +31,8 @@ myBias = 0#1.0
 #dimX = 482
 #dimY = 646
 # Image characteristics
-dimY = 1344#imgWidth
-dimX = 1024#imgHeight
+dimY = 1344#336#672#imgWidth
+dimX = 1024#256#imgHeight
 myChan = 1
 myOutChan = 1
 # ***
@@ -68,8 +68,9 @@ def atrousCNN(data,mode):
 		kernel_size = [kern1Size,kern1Size],
 		padding = "same",
 		activation = tf.nn.relu, use_bias = True, bias_initializer = tf.constant_initializer(myBias),name = "conv0")
+	pool0 = tf.nn.avg_pool(conv0,[1,2,2,1],[1,2,2,1],padding="SAME")
 	dropout0 = tf.layers.dropout(
-	    inputs = conv0,#conv1,
+	    inputs = pool0,#conv1,
 	    rate = dORate,
 	    training = mode,
 	    name = "dropout0")#128x16
@@ -81,78 +82,70 @@ def atrousCNN(data,mode):
 		kernel_size = [kern1Size,kern1Size],
 		padding = "same",
 		activation = tf.nn.relu, use_bias = True, bias_initializer = tf.constant_initializer(myBias),name = "conv1")
+	#128x16
+	#tf.nn.avg_pool(conv1,[1,2,2,1],[1,2,2,1],padding="SAME")
 	dropout1 = tf.layers.dropout(
 	    inputs = conv1,#conv1,
 	    rate = dORate,
 	    training = mode,
-	    name = "dropout1")#128x16
+	    name = "dropout1")
 	"""Layer 1.1"""
-	conv1_1 = tf.layers.conv2d(
+	conv2 = tf.layers.conv2d(
 		inputs = dropout1,
 		filters = convDepth,
 		kernel_size = [kern1Size,kern1Size],
 		padding = "same",
 		activation = tf.nn.relu, 
         use_bias = True, bias_initializer = tf.constant_initializer(myBias),name = "conv11")
-	dropout1_1 = tf.layers.dropout(
-	    inputs = conv1_1,#conv1,
+	pool2 = tf.nn.avg_pool(conv2,[1,2,2,1],[1,2,2,1],padding="SAME")
+
+	dropout2 = tf.layers.dropout(
+	    inputs = pool2,#conv1,
 	    rate = dORate,
 	    training = mode,
 	    name = "dropout11")#128x16
     
-	conv1_2 = tf.layers.conv2d(
-		inputs = dropout1_1,
+	conv3 = tf.layers.conv2d(
+		inputs = dropout2,
 		filters = convDepth,
 		kernel_size = [kern1Size,kern1Size],
 		padding = "same",
 		activation = tf.nn.relu, use_bias = True, 
         bias_initializer = tf.constant_initializer(myBias),name = "conv12")
-	dropout1_2 = tf.layers.dropout(
-	    inputs = conv1_2,#conv1,
+	dropout3 = tf.layers.dropout(
+	    inputs = conv3,#conv1,
 	    rate = dORate,
 	    training = mode,
 	    name = "dropout12")#128x16
     
-	conv1_3 = tf.layers.conv2d(
-		inputs = dropout1_2,
+	conv4 = tf.layers.conv2d(
+		inputs = dropout3,
 		filters = convDepth,
 		kernel_size = [kern1Size,kern1Size],
 		padding = "same",
 		activation = tf.nn.relu, 
         use_bias = True, bias_initializer = tf.constant_initializer(myBias),name = "conv13")
-	dropout1_3 = tf.layers.dropout(
-	    inputs = conv1_3,#conv1,
+	dropout4 = tf.layers.dropout(
+	    inputs = conv4,#conv1,
 	    rate = dORate,
 	    training = mode,
 	    name = "dropout13")#128x16    
     
 
-	"""Layer 2"""
-	conv2 = tf.layers.conv2d(
-		inputs = dropout1_3,
-		filters = convDepth,
-		kernel_size = [kern1Size,kern1Size],
-		padding = "same",
-		activation = tf.nn.relu, use_bias = True, bias_initializer = tf.constant_initializer(myBias),name = "conv2")
-	dropout2 = tf.layers.dropout(
-	    inputs = conv2,#conv1,
-	    rate = dORate,
-	    training = mode,
-	    name = "dropout2")#128x16
-
 	"""Parallel atrous convolutions"""
-	atrous1 = tf.nn.relu(tf.nn.atrous_conv2d(dropout2,a1Filters,1,"SAME",name='atrous1'))
-	atrous2 = tf.nn.relu(tf.nn.atrous_conv2d(dropout2,a2Filters,2,"SAME",name='atrous2'))
-	atrous4 = tf.nn.relu(tf.nn.atrous_conv2d(dropout2,a4Filters,4,"SAME",name='atrous4'))
-	atrous8 = tf.nn.relu(tf.nn.atrous_conv2d(dropout2,a8Filters,8,"SAME",name='atrous8'))
+	atrous1 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a1Filters,1,"SAME",name='atrous1'))
+	atrous2 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a2Filters,2,"SAME",name='atrous2'))
+	atrous4 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a4Filters,4,"SAME",name='atrous4'))
+	atrous8 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a8Filters,8,"SAME",name='atrous8'))
 	
+			
 	dropout3_5 = tf.layers.dropout(
 		inputs = tf.concat([atrous1,atrous2,atrous4,atrous8],3),
 #([atrous1,atrous2,atrous3,atrous4,atrous5,atrous6,atrous7,atrous8,atrous9,atrous10],3),
 		rate = dORate,
 		training = mode,
 		name = "dropout3_5")
-	conv4 = tf.layers.conv2d(
+	conv6 = tf.layers.conv2d(
 		inputs = dropout3_5,
 		filters = convDepth,
 		kernel_size = [kern1Size,kern1Size],
@@ -160,23 +153,37 @@ def atrousCNN(data,mode):
 		activation = tf.nn.relu, 
 		use_bias = True, 
 		bias_initializer = tf.constant_initializer(myBias),name = "conv4")
-    
-	dropout4 = tf.layers.dropout(
-		inputs = tf.concat([atrous1,atrous2,atrous4,atrous8],3),
-#([atrous1,atrous2,atrous3,atrous4,atrous5,atrous6,atrous7,atrous8,atrous9,atrous10],3),
+	res6 =	tf.image.resize_images(conv6,[dimX,dimY])	    
+	dropout6 = tf.layers.dropout(
+		inputs = res6,
 		rate = dORate,
 		training = mode,
 		name = "dropout4")
 	
-	conv5 = tf.layers.conv2d(
-		inputs = dropout4,
-		filters = 1,#convDepth,
+	conv7 = tf.layers.conv2d(
+		inputs = dropout6,
+		filters = convDepth,
 		kernel_size = [kern1Size,kern1Size],
 		padding = "same",
 		activation = tf.nn.relu, 
 		use_bias = True, 
 		bias_initializer = tf.constant_initializer(myBias),name = "conv5")
-	myOutput = conv5
+	dropout7 = tf.layers.dropout(
+		inputs = conv7,
+		rate = dORate,
+		training = mode,
+		name = "dropout5")	
+
+	conv8 = tf.layers.conv2d(
+		inputs = dropout7,
+		filters = 1,
+		kernel_size = [kern1Size,kern1Size],
+		padding = "same",
+		activation = None, 
+		use_bias = True, 
+		bias_initializer = tf.constant_initializer(myBias),name = "conv6")
+	
+	myOutput = conv8
 	return myOutput
 
 myOut = atrousCNN(data,mode)
@@ -204,6 +211,7 @@ def main(unused_argv):
 		sess.run(init)
 		lR = 3e-5
 		myX = np.load('./coelhoData.npy')
+		#myX = myX[:,0:256,0:336]
 		myMin = np.min(myX)
 		
 		myMax = np.max(myX-myMin)
@@ -225,22 +233,18 @@ def main(unused_argv):
 				print("Epoch %i training loss: %.4e "%(i,myLossTrain))
 
 				recon = sess.run(myOut,feed_dict = {data: input_, mode: False})
-				decon = sess.run(myDecon,feed_dict = {data: input_, mode: False})
+				plt.figure()
 				for ck in range(3):
-					plt.figure()
-					plt.subplot(131)
+					plt.subplot(3,2,2*ck+1)
 					plt.title("original image")
-					plt.imshow(input_[ck,:,:,0],cmap="inferno")
-					plt.subplot(132)
-					plt.title("reconstructed")
-					plt.imshow(recon[ck,:,:,0],cmap="inferno")
+					plt.imshow(input_[ck,:,:,0],cmap="gray")
+					plt.subplot(3,2,2*ck+2)
+					plt.title("autodecoded")
+					plt.imshow(recon[ck,:,:,0],cmap="gray")
 
-					plt.subplot(133)
-					plt.title("pseudo-deconvolved")
-					plt.imshow(decon[ck,:,:,0],cmap="inferno")
-
-					plt.show()#plt.savefig("./figs/epoch%iImg%i.png"%(i,ck))
-					plt.clf()
+				
+				plt.savefig("./figs/epoch%i.png"%(i))
+				plt.clf()
 
 	print("finished .. . .")
 
