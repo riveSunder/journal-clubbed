@@ -19,8 +19,16 @@ import matplotlib.pyplot as plt
 
 # Determine whether we are using atrous convolutions, u-net architecture, neither, or both
 
-useAtrous = True
-useUNet = False
+
+# user-definable flags
+FLAGS = tf.app.flags.FLAGS
+
+# User defined flags
+tf.app.flags.DEFINE_boolean('useAtrous', False,"""Use dilated convolutions?""")
+tf.app.flags.DEFINE_boolean('useUNet', False,"""Use skip connections?""")
+
+useAtrous = FLAGS.useAtrous
+useUNet = FLAGS.useUNet
 
 if (useAtrous and useUNet):
 	myModel = "./models/holesAndSkips/"
@@ -287,8 +295,15 @@ def main(unused_argv):
 		#tf.initialize_all_variables().run() 
 		sess.run(init)
 		lR = 3e-5
-		myX = np.load('./coelhoData.npy')
-		#myX = myX[:,0:256,0:336]
+		myX = np.load('./coelTrain.npy')
+		myVal = np.load('./coelVal.npy')
+		myMinV = np.min(myVal)
+		
+		myMaxV = np.max(myVal-myMinV)
+		myVal = (myVal-myMinV)/(myMaxV)
+
+		myVal = np.reshape(myVal, (myVal.shape[0],myVal.shape[1],myVal.shape[2],1))
+		
 		myMin = np.min(myX)
 		
 		myMax = np.max(myX-myMin)
@@ -304,11 +319,13 @@ def main(unused_argv):
 			if(i% dispIt ==0):
 				mySaver.save(sess,myModel,global_step=i)			
 				inp = tf.placeholder(tf.float32)
-
 				myMean = tf.reduce_mean(inp)
 				myTemp = (sess.run(loss, feed_dict={data: input_, learningRate: lR, mode: False}))
 				myLossTrain = myMean.eval(feed_dict={inp: myTemp})
-				print("Epoch %i training loss: %.4e "%(i,myLossTrain))
+				
+				myTemp = (sess.run(loss, feed_dict={data: myVal, learningRate: lR, mode: False}))
+				myLossVal = myMean.eval(feed_dict={inp: myTemp})
+				print("Epoch %i training loss, validation loss: %.3e , %.3e "%(i,myLossTrain,myLossVal))
 
 				recon = sess.run(myOut,feed_dict = {data: input_, mode: False})
 				plt.figure()
@@ -323,6 +340,41 @@ def main(unused_argv):
 				
 				plt.savefig("./figs/epoch%i.png"%(i))
 				plt.clf()
+
+	myVal = np.load('./coelTest.npy')
+	myMinT = np.min(myTest)
+	
+	myMaxT = np.max(myTest-myMinT)
+	myTest = (myTest-myMinT)/(myMaxT)
+
+	myTest = np.reshape(myTest, (myTest.shape[0],myTest.shape[1],myTest.shape[2],1))
+	
+	inp = tf.placeholder(tf.float32)
+	myMean = tf.reduce_mean(inp)
+	myTemp = (sess.run(loss, feed_dict={data: input_, learningRate: lR, mode: False}))
+	myLossTrain = myMean.eval(feed_dict={inp: myTemp})
+
+	myTemp = (sess.run(loss, feed_dict={data: myVal, learningRate: lR, mode: False}))
+	myLossVal = myMean.eval(feed_dict={inp: myTemp})
+	
+	myTemp = (sess.run(loss, feed_dict={data: myTrain, learningRate: lR, mode: False}))
+	myLossVal = myMean.eval(feed_dict={inp: myTemp})
+	print("Final training loss, validation loss, test loss: %.3e , %.3e , %.3e"%(myLossTrain,myLossVal,myLossTest))
+
+	recon = sess.run(myTest,feed_dict = {data: input_, mode: False})
+	
+	for ck in range(10):
+		plt.figure()
+		plt.subplot(1,2,2*ck+1)
+		plt.title("original image")
+		plt.imshow(input_[ck,:,:,0],cmap="gray")
+		plt.subplot(1,2,2*ck+2)
+		plt.title("autodecoded w/ Atrous: %s and UNet: %s"%(str(useAtrous),str(useUNet)))
+		plt.imshow(recon[ck,:,:,0],cmap="gray")
+	np.save('coelTestDataAtrous%sUNet%s.npy'%(str(useAtrous),str(useUNet)),recon)
+	
+	plt.savefig("./figs/epoch%i.png"%(i))
+	plt.clf()
 
 	print("finished .. . .")
 
