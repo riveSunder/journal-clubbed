@@ -17,6 +17,23 @@ from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_f
 import matplotlib
 import matplotlib.pyplot as plt
 
+# Determine whether we are using atrous convolutions, u-net architecture, neither, or both
+
+useAtrous = True
+useUNet = False
+
+if (useAtrous and useUNet):
+	myModel = "./models/holesAndSkips/"
+elif (useAtrous):
+	myModel = "./models/justHoles/"
+elif (useUNet):
+	myModel = "./models/justSkips/"
+else:
+	myModel = "./models/noHolesNoSkips/"
+
+
+
+
 # hyperparameters
 mySeed = 1337
 
@@ -130,60 +147,120 @@ def atrousCNN(data,mode):
 	    rate = dORate,
 	    training = mode,
 	    name = "dropout13")#128x16    
-    
 
-	"""Parallel atrous convolutions"""
+    
 	atrous1 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a1Filters,1,"SAME",name='atrous1'))
-	atrous2 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a2Filters,2,"SAME",name='atrous2'))
-	atrous4 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a4Filters,4,"SAME",name='atrous4'))
-	atrous8 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a8Filters,8,"SAME",name='atrous8'))
+
+	if(useAtrous):
+		"""Parallel atrous convolutions"""
+		atrous2 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a2Filters,2,"SAME",name='atrous2'))
+		atrous4 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a4Filters,4,"SAME",name='atrous4'))
+		atrous8 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a8Filters,8,"SAME",name='atrous8'))
 	
 			
-	dropout3_5 = tf.layers.dropout(
-		inputs = tf.concat([atrous1,atrous2,atrous4,atrous8],3),
-#([atrous1,atrous2,atrous3,atrous4,atrous5,atrous6,atrous7,atrous8,atrous9,atrous10],3),
-		rate = dORate,
-		training = mode,
-		name = "dropout3_5")
+		dropout5 = tf.layers.dropout(
+			inputs = tf.concat([atrous1,atrous2,atrous4,atrous8],3),
+			rate = dORate,
+			training = mode,
+			name = "dropout5")
+	else:
+		dropout5 = tf.layers.dropout(
+			inputs = atrous1, #tf.concat([atrous1,atrous2,atrous4,atrous8],3),
+			rate = dORate,
+			training = mode,
+			name = "dropout5")
 	conv6 = tf.layers.conv2d(
-		inputs = dropout3_5,
+		inputs = dropout5,
 		filters = convDepth,
 		kernel_size = [kern1Size,kern1Size],
 		padding = "same",
 		activation = tf.nn.relu, 
 		use_bias = True, 
 		bias_initializer = tf.constant_initializer(myBias),name = "conv4")
-	res6 =	tf.image.resize_images(conv6,[dimX,dimY])	    
-	dropout6 = tf.layers.dropout(
-		inputs = res6,
-		rate = dORate,
-		training = mode,
-		name = "dropout4")
-	
-	conv7 = tf.layers.conv2d(
-		inputs = dropout6,
-		filters = convDepth,
-		kernel_size = [kern1Size,kern1Size],
-		padding = "same",
-		activation = tf.nn.relu, 
-		use_bias = True, 
-		bias_initializer = tf.constant_initializer(myBias),name = "conv5")
-	dropout7 = tf.layers.dropout(
-		inputs = conv7,
-		rate = dORate,
-		training = mode,
-		name = "dropout5")	
 
-	conv8 = tf.layers.conv2d(
-		inputs = dropout7,
+	res6 =	tf.image.resize_images(conv6,[dimX,dimY])	    
+	if(useUNet):
+		"""Include skip connection (U-Net architecture) from conv2"""
+		dropout6u = tf.layers.dropout(
+			inputs = tf.concat([conv2,res6],3),
+			rate = dORate,
+			training = mode,
+			name = "dropout4")
+		conv7 = tf.layers.conv2d(
+			inputs = dropout6u,
+			filters = convDepth,
+			kernel_size = [kern1Size,kern1Size],
+			padding = "same",
+			activation = tf.nn.relu, 
+			use_bias = True, 
+			bias_initializer = tf.constant_initializer(myBias),name = "conv5")	
+	else:
+		dropout6 = tf.layers.dropout(
+			inputs = res6,
+			rate = dORate,
+			training = mode,
+			name = "dropout4")
+		conv7 = tf.layers.conv2d(
+			inputs = dropout6,
+			filters = convDepth,
+			kernel_size = [kern1Size,kern1Size],
+			padding = "same",
+			activation = tf.nn.relu, 
+			use_bias = True, 
+			bias_initializer = tf.constant_initializer(myBias),name = "conv5")
+	if(useUNet):
+		"""include skip connection to conv0 (U-Net)"""
+		dropout7u = tf.layers.dropout(
+			inputs = tf.concat([conv0,conv7],3),
+			rate = dORate,
+			training = mode,
+			name = "dropout7u")#128x16
+		conv8 = tf.layers.conv2d(
+			inputs = dropout7u,
+			filters = convDepth,
+			kernel_size = [kern1Size,kern1Size],
+			padding = "same",
+			activation = None, 
+			use_bias = True, 
+			bias_initializer = tf.constant_initializer(myBias),name = "conv8")
+		dropout8 = tf.layers.dropout(
+			inputs = conv8,
+			rate = dORate,
+			training = mode,
+			name = "dropout8")	
+
+	else:
+		dropout7 = tf.layers.dropout(
+			inputs = conv7,
+			rate = dORate,
+			training = mode,
+			name = "dropout7")	
+
+		conv8 = tf.layers.conv2d(
+			inputs = dropout7,
+			filters = convDepth,
+			kernel_size = [kern1Size,kern1Size],
+			padding = "same",
+			activation = None, 
+			use_bias = True, 
+			bias_initializer = tf.constant_initializer(myBias),name = "conv8")
+		dropout8 = tf.layers.dropout(
+			inputs = conv8,
+			rate = dORate,
+			training = mode,
+			name = "dropout8")	
+
+	conv9 = tf.layers.conv2d(
+		inputs = dropout8,
 		filters = 1,
 		kernel_size = [kern1Size,kern1Size],
 		padding = "same",
 		activation = None, 
 		use_bias = True, 
 		bias_initializer = tf.constant_initializer(myBias),name = "conv6")
-	
-	myOutput = conv8
+		
+
+	myOutput = conv9
 	return myOutput
 
 myOut = atrousCNN(data,mode)
@@ -201,7 +278,7 @@ trainOp = tf.train.AdamOptimizer(
 	use_locking=False,
 	name='Adam').minimize(loss,global_step = tf.contrib.framework.get_global_step())
 
-init = tf.global_variables_initializer()
+mySaver = tf.train.Saver()
 
 init = tf.global_variables_initializer()
 def main(unused_argv):
@@ -225,6 +302,7 @@ def main(unused_argv):
 				sess.run(trainOp, feed_dict = {data: input_, learningRate: lR, mode: True})
 
 			if(i% dispIt ==0):
+				mySaver.save(sess,myModel,global_step=i)			
 				inp = tf.placeholder(tf.float32)
 
 				myMean = tf.reduce_mean(inp)
