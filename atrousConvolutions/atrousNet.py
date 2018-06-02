@@ -55,7 +55,7 @@ else:
 mySeed = 1337
 
 dORate = 0.55
-lR = 6e-5
+lR = 3e-4
 # number of kernels per layer
 convDepth = 4
 myBias = 0.1#1.0
@@ -80,14 +80,14 @@ learningRate = tf.placeholder("float",name='learningRate')
 mode = tf.placeholder("bool",name="myMode")
 
 # Define atrous conv filtes
-a1Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.135),name="a1weights")
-a2Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.135),name="a2weights")
-a3Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.135),name="a3weights")
-a4Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.135),name="a4weights")
-a8Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.135),name="a8weights")
+a1Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.35),name="a1weights")
+a2Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.35),name="a2weights")
+a3Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.35),name="a3weights")
+a4Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.35),name="a4weights")
+a8Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.35),name="a8weights")
 
 # bias for atrous layer
-ba = tf.Variable(myBias,trainable=True)
+#ba = tf.Variable(myBias,trainable=True)
 
 def atrousCNN(data,mode):
 	# mode = false apply dropout
@@ -166,19 +166,19 @@ def atrousCNN(data,mode):
 	    name = "dropout13")#128x16    
 
     
-	atrous1 = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout4,a1Filters,1,"SAME",name='atrous1'))
+	atrous1 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a1Filters,1,"SAME",name='atrous1'))
 
 	if(useAtrous):
 		"""Parallel atrous convolutions"""
-		atrous2 = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout4,a2Filters,2,"SAME",name='atrous2')+ba)
-		atrous3 = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout4,a3Filters,3,"SAME",name='atrous3')+ba)
-		atrous4 = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout4,a4Filters,4,"SAME",name='atrous4')+ba)
-		atrous8 = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout4,a8Filters,8,"SAME",name='atrous8')+ba)
+		atrous2 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a2Filters,2,"SAME",name='atrous2'))
+		atrous3 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a3Filters,3,"SAME",name='atrous3'))
+		atrous4 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a4Filters,4,"SAME",name='atrous4'))
+		atrous8 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a8Filters,8,"SAME",name='atrous8'))
 	
 			
 		dropout5 = tf.layers.dropout(
 			inputs = tf.concat([atrous1,atrous2,atrous3,atrous4,atrous8],3),
-			rate = dORate*0.5,
+			rate = dORate,
 			training = mode,
 			name = "dropout5")
 	else:
@@ -195,10 +195,11 @@ def atrousCNN(data,mode):
 		padding = "same",
 		activation = tf.nn.relu, 
 		use_bias = True, 
-		bias_initializer = tf.constant_initializer(myBias),name = "conv4")
+		bias_initializer = tf.constant_initializer(myBias),name = "conv6")
 
-	res6 =	tf.image.resize_images(conv6,[int(dimX/2),int(dimY/2)])	    
+	res6 =	tf.image.resize_images(conv6,[int(dimX),int(dimY)])	    
 	if(useUNet):
+
 		"""Include skip connection (U-Net architecture) from conv2"""
 		dropout6u = tf.layers.dropout(
 			inputs = tf.concat([conv2,res6],3),
@@ -228,7 +229,7 @@ def atrousCNN(data,mode):
 			use_bias = True, 
 			bias_initializer = tf.constant_initializer(myBias),name = "conv5")
 	
-	res7 =	tf.image.resize_images(conv6,[int(dimX),int(dimY)])	    
+	#res7 =	tf.image.resize_images(conv7,[int(dimX),int(dimY)])	    
 	if(useUNet):
 		"""include skip connection to conv0 (U-Net)"""
 		dropout7u = tf.layers.dropout(
@@ -241,7 +242,7 @@ def atrousCNN(data,mode):
 			filters = convDepth,
 			kernel_size = [kern1Size,kern1Size],
 			padding = "same",
-			activation = None, 
+			activation = tf.nn.relu, 
 			use_bias = True, 
 			bias_initializer = tf.constant_initializer(myBias),name = "conv8")
 		dropout8 = tf.layers.dropout(
@@ -252,7 +253,7 @@ def atrousCNN(data,mode):
 
 	else:
 		dropout7 = tf.layers.dropout(
-			inputs = res7,
+			inputs = conv7,
 			rate = dORate,
 			training = mode,
 			name = "dropout7")	
@@ -262,7 +263,7 @@ def atrousCNN(data,mode):
 			filters = convDepth,
 			kernel_size = [kern1Size,kern1Size],
 			padding = "same",
-			activation = None, 
+			activation = tf.nn.relu, 
 			use_bias = True, 
 			bias_initializer = tf.constant_initializer(myBias),name = "conv8")
 		dropout8 = tf.layers.dropout(
@@ -278,7 +279,7 @@ def atrousCNN(data,mode):
 		padding = "same",
 		activation = None, 
 		use_bias = True, 
-		bias_initializer = tf.constant_initializer(myBias),name = "conv6")
+		bias_initializer = tf.constant_initializer(myBias),name = "conv9")
 		
 
 	myOutput = conv9
