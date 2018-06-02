@@ -3,7 +3,7 @@
 # imports 
 import numpy as np
 # Used for reading in images
-import cv2
+#import cv2
 import scipy.misc as misc
 # used for timing 
 import time
@@ -26,9 +26,18 @@ FLAGS = tf.app.flags.FLAGS
 # User defined flags
 tf.app.flags.DEFINE_boolean('useAtrous', False,"""Use dilated convolutions?""")
 tf.app.flags.DEFINE_boolean('useUNet', False,"""Use skip connections?""")
+tf.app.flags.DEFINE_boolean('restore', False,"""Restore previously trained model""")
+tf.app.flags.DEFINE_integer('maxSteps', 1,"""number of epochs""")
+tf.app.flags.DEFINE_integer('dispIt', 20,"""display every nth iteration""")
+tf.app.flags.DEFINE_integer('batchSize', 4,"""Number of entries per minibatch""")
 
+restore = FLAGS.restore
 useAtrous = FLAGS.useAtrous
 useUNet = FLAGS.useUNet
+dispIt = FLAGS.dispIt
+maxSteps = FLAGS.maxSteps
+batchSize = FLAGS.batchSize
+
 
 if (useAtrous and useUNet):
 	myModel = "./models/holesAndSkips/"
@@ -45,10 +54,10 @@ else:
 # hyperparameters
 mySeed = 1337
 
-dispIt = 20
-maxSteps = 800
+#dispIt = 20
+#maxSteps = 61
 dORate = 0.4
-batchSize = 4
+#batchSize = 4
 lR = 3e-4
 # number of kernels per layer
 convDepth = 4
@@ -76,6 +85,7 @@ mode = tf.placeholder("bool",name="myMode")
 # Define atrous conv filtes
 a1Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.35),name="a1weights")
 a2Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.35),name="a2weights")
+a3Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.35),name="a3weights")
 a4Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.35),name="a4weights")
 a8Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.35),name="a8weights")
 
@@ -108,9 +118,10 @@ def atrousCNN(data,mode):
 		padding = "same",
 		activation = tf.nn.relu, use_bias = True, bias_initializer = tf.constant_initializer(myBias),name = "conv1")
 	#128x16
-	#tf.nn.avg_pool(conv1,[1,2,2,1],[1,2,2,1],padding="SAME")
+	
+	pool1 = tf.nn.avg_pool(conv1,[1,2,2,1],[1,2,2,1],padding="SAME")
 	dropout1 = tf.layers.dropout(
-	    inputs = conv1,#conv1,
+	    inputs = pool1,#conv1,
 	    rate = dORate,
 	    training = mode,
 	    name = "dropout1")
@@ -122,14 +133,21 @@ def atrousCNN(data,mode):
 		padding = "same",
 		activation = tf.nn.relu, 
         use_bias = True, bias_initializer = tf.constant_initializer(myBias),name = "conv11")
-	pool2 = tf.nn.avg_pool(conv2,[1,2,2,1],[1,2,2,1],padding="SAME")
+	if (useUNet):
+		pool2 = tf.nn.avg_pool(conv2,[1,2,2,1],[1,2,2,1],padding="SAME")
 
-	dropout2 = tf.layers.dropout(
-	    inputs = pool2,#conv1,
-	    rate = dORate,
-	    training = mode,
-	    name = "dropout11")#128x16
-    
+		dropout2 = tf.layers.dropout(
+		    inputs = pool2,#conv1,
+		    rate = dORate,
+		    training = mode,
+		    name = "dropout11")#128x16
+	else:
+		dropout2 = tf.layers.dropout(
+		    inputs = conv2,#conv1,
+		    rate = dORate,
+		    training = mode,
+		    name = "dropout11")
+
 	conv3 = tf.layers.conv2d(
 		inputs = dropout2,
 		filters = convDepth,
@@ -137,12 +155,21 @@ def atrousCNN(data,mode):
 		padding = "same",
 		activation = tf.nn.relu, use_bias = True, 
         bias_initializer = tf.constant_initializer(myBias),name = "conv12")
-	dropout3 = tf.layers.dropout(
-	    inputs = conv3,#conv1,
-	    rate = dORate,
-	    training = mode,
-	    name = "dropout12")#128x16
-    
+
+	if (useUNet):
+		pool3 = tf.nn.avg_pool(conv3,[1,2,2,1],[1,2,2,1],padding="SAME")
+		dropout3 = tf.layers.dropout(
+		    inputs = pool3,#conv1,
+		    rate = dORate,
+		    training = mode,
+		    name = "dropout3")#128x16
+	else:
+		dropout3 = tf.layers.dropout(
+		    inputs = conv3,#conv1,
+		    rate = dORate,
+		    training = mode,
+		    name = "dropout12")#128x16
+    	
 	conv4 = tf.layers.conv2d(
 		inputs = dropout3,
 		filters = convDepth,
@@ -162,6 +189,7 @@ def atrousCNN(data,mode):
 	if(useAtrous):
 		"""Parallel atrous convolutions"""
 		atrous2 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a2Filters,2,"SAME",name='atrous2'))
+		atrous3 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a2Filters,3,"SAME",name='atrous3'))
 		atrous4 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a4Filters,4,"SAME",name='atrous4'))
 		atrous8 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a8Filters,8,"SAME",name='atrous8'))
 	
@@ -185,12 +213,12 @@ def atrousCNN(data,mode):
 		activation = tf.nn.relu, 
 		use_bias = True, 
 		bias_initializer = tf.constant_initializer(myBias),name = "conv4")
-
-	res6 =	tf.image.resize_images(conv6,[dimX,dimY])	    
+	    
 	if(useUNet):
+		res6 =	tf.image.resize_images(conv6,[int(dimX/2),int(dimY/2)])
 		"""Include skip connection (U-Net architecture) from conv2"""
 		dropout6u = tf.layers.dropout(
-			inputs = tf.concat([conv2,res6],3),
+			inputs = tf.concat([conv1,res6],3),
 			rate = dORate,
 			training = mode,
 			name = "dropout4")
@@ -203,6 +231,7 @@ def atrousCNN(data,mode):
 			use_bias = True, 
 			bias_initializer = tf.constant_initializer(myBias),name = "conv5")	
 	else:
+		res6 =	tf.image.resize_images(conv6,[dimX,dimY])
 		dropout6 = tf.layers.dropout(
 			inputs = res6,
 			rate = dORate,
@@ -217,9 +246,10 @@ def atrousCNN(data,mode):
 			use_bias = True, 
 			bias_initializer = tf.constant_initializer(myBias),name = "conv5")
 	if(useUNet):
+		res7 =	tf.image.resize_images(conv6,[int(dimX),int(dimY)])
 		"""include skip connection to conv0 (U-Net)"""
 		dropout7u = tf.layers.dropout(
-			inputs = tf.concat([conv0,conv7],3),
+			inputs = tf.concat([conv0,res7],3),
 			rate = dORate,
 			training = mode,
 			name = "dropout7u")#128x16
@@ -228,7 +258,7 @@ def atrousCNN(data,mode):
 			filters = convDepth,
 			kernel_size = [kern1Size,kern1Size],
 			padding = "same",
-			activation = None, 
+			activation = tf.nn.relu, 
 			use_bias = True, 
 			bias_initializer = tf.constant_initializer(myBias),name = "conv8")
 		dropout8 = tf.layers.dropout(
@@ -249,7 +279,7 @@ def atrousCNN(data,mode):
 			filters = convDepth,
 			kernel_size = [kern1Size,kern1Size],
 			padding = "same",
-			activation = None, 
+			activation = tf.nn.relu, 
 			use_bias = True, 
 			bias_initializer = tf.constant_initializer(myBias),name = "conv8")
 		dropout8 = tf.layers.dropout(
@@ -291,7 +321,10 @@ mySaver = tf.train.Saver()
 init = tf.global_variables_initializer()
 def main(unused_argv):
 	#tf.reset_default_graph()
+	t0 = time.time()
 	with tf.Session() as sess: 
+		if(restore):
+			mySaver.restore(sess,tf.train.latest_checkpoint(myModel))
 		#tf.initialize_all_variables().run() 
 		sess.run(init)
 		lR = 3e-5
@@ -327,54 +360,57 @@ def main(unused_argv):
 				myLossVal = myMean.eval(feed_dict={inp: myTemp})
 				print("Epoch %i training loss, validation loss: %.3e , %.3e "%(i,myLossTrain,myLossVal))
 
-				recon = sess.run(myOut,feed_dict = {data: input_, mode: False})
-				plt.figure()
+				recon = sess.run(myOut,feed_dict = {data: myVal, mode: False})
+				plt.figure(figsize=(10,10))
 				for ck in range(3):
 					plt.subplot(3,2,2*ck+1)
 					plt.title("original image")
-					plt.imshow(input_[ck,:,:,0],cmap="gray")
+					plt.imshow(myVal[ck,:,:,0],cmap="gray")
 					plt.subplot(3,2,2*ck+2)
 					plt.title("autodecoded")
 					plt.imshow(recon[ck,:,:,0],cmap="gray")
 
 				
-				plt.savefig("./figs/epoch%i.png"%(i))
+				plt.savefig("./figs/epoch%iAtrous%sUNet%s.png"%(i,useAtrous,useUNet))
 				plt.clf()
+		# Perform final evaluation
+		myTest = np.load('./coelTest.npy')
+		myMinT = np.min(myTest)
+	
+		myMaxT = np.max(myTest-myMinT)
+		myTest = (myTest-myMinT)/(myMaxT)
 
-	myVal = np.load('./coelTest.npy')
-	myMinT = np.min(myTest)
+		myTest = np.reshape(myTest, (myTest.shape[0],myTest.shape[1],myTest.shape[2],1))
 	
-	myMaxT = np.max(myTest-myMinT)
-	myTest = (myTest-myMinT)/(myMaxT)
+		inp = tf.placeholder(tf.float32)
+		myMean = tf.reduce_mean(inp)
+		myTemp = (sess.run(loss, feed_dict={data: input_, learningRate: lR, mode: False}))
+		myLossTrain = myMean.eval(feed_dict={inp: myTemp})
 
-	myTest = np.reshape(myTest, (myTest.shape[0],myTest.shape[1],myTest.shape[2],1))
+		myTemp = (sess.run(loss, feed_dict={data: myVal, learningRate: lR, mode: False}))
+		myLossVal = myMean.eval(feed_dict={inp: myTemp})
 	
-	inp = tf.placeholder(tf.float32)
-	myMean = tf.reduce_mean(inp)
-	myTemp = (sess.run(loss, feed_dict={data: input_, learningRate: lR, mode: False}))
-	myLossTrain = myMean.eval(feed_dict={inp: myTemp})
+		myTemp = (sess.run(loss, feed_dict={data: myTest, learningRate: lR, mode: False}))
+		myLossTest = myMean.eval(feed_dict={inp: myTemp})
+		elapsed = time.time()-t0
+		print("Final training loss, validation loss, test loss: %.3e , %.3e , %.3e, time elapsed: %.1f s"%(myLossTrain,myLossVal,myLossTest,elapsed))
+		logFile = open("./lossLog.txt",'a')
+		logFile.write("\nAtrous: %s, UNet: %s, Final training loss, validation loss, test loss: %.3e , %.3e , %.3e, time elapsed: %.1f s"%(useAtrous,useUNet, myLossTrain,myLossVal,myLossTest,elapsed))
+		recon = sess.run(myOut,feed_dict = {data: myTest, mode: False})
+		print(np.shape(myTest))
+		print(np.shape(recon))
+		for ck in range(9):
+			plt.figure(figsize=(10,5))
+			plt.subplot(1,2,1)
+			plt.title("original image")
+			plt.imshow(myTest[ck,:,:,0],cmap="gray")
+			plt.subplot(1,2,2)
+			plt.title("autodecoded w/ Atrous: %s and UNet: %s"%(str(useAtrous),str(useUNet)))
+			plt.imshow(recon[ck,:,:,0],cmap="gray")
 
-	myTemp = (sess.run(loss, feed_dict={data: myVal, learningRate: lR, mode: False}))
-	myLossVal = myMean.eval(feed_dict={inp: myTemp})
-	
-	myTemp = (sess.run(loss, feed_dict={data: myTrain, learningRate: lR, mode: False}))
-	myLossVal = myMean.eval(feed_dict={inp: myTemp})
-	print("Final training loss, validation loss, test loss: %.3e , %.3e , %.3e"%(myLossTrain,myLossVal,myLossTest))
-
-	recon = sess.run(myTest,feed_dict = {data: input_, mode: False})
-	
-	for ck in range(10):
-		plt.figure()
-		plt.subplot(1,2,2*ck+1)
-		plt.title("original image")
-		plt.imshow(input_[ck,:,:,0],cmap="gray")
-		plt.subplot(1,2,2*ck+2)
-		plt.title("autodecoded w/ Atrous: %s and UNet: %s"%(str(useAtrous),str(useUNet)))
-		plt.imshow(recon[ck,:,:,0],cmap="gray")
-	np.save('coelTestDataAtrous%sUNet%s.npy'%(str(useAtrous),str(useUNet)),recon)
-	
-	plt.savefig("./figs/epoch%i.png"%(i))
-	plt.clf()
+			plt.savefig("./figs/testAE%iAtrous%sUNet%s.png"%(ck,str(useAtrous),str(useUNet)))
+		np.save('coelTestDataAtrous%sUNet%s.npy'%(str(useAtrous),str(useUNet)),recon)
+		plt.clf()
 
 	print("finished .. . .")
 
