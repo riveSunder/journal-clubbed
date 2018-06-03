@@ -40,13 +40,13 @@ batchSize = FLAGS.batchSize
 
 
 if (useAtrous and useUNet):
-	myModel = "./models/holesAndSkips/"
+	myModel = "./models/holesAndSkips2/"
 elif (useAtrous):
-	myModel = "./models/justHoles/"
+	myModel = "./models/justHoles2/"
 elif (useUNet):
-	myModel = "./models/justSkips/"
+	myModel = "./models/justSkips2/"
 else:
-	myModel = "./models/noHolesNoSkips/"
+	myModel = "./models/noHolesNoSkips2/"
 
 
 
@@ -56,9 +56,9 @@ mySeed = 1337
 
 #dispIt = 20
 #maxSteps = 61
-dORate = 0.4
+dORate = 0.5
 #batchSize = 4
-lR = 3e-4
+lR = 1e-3
 # number of kernels per layer
 convDepth = 4
 myBias = 0#1.0
@@ -83,11 +83,14 @@ learningRate = tf.placeholder("float",name='learningRate')
 mode = tf.placeholder("bool",name="myMode")
 
 # Define atrous conv filtes
-a1Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.35),name="a1weights")
-a2Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.35),name="a2weights")
-a3Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.35),name="a3weights")
-a4Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.35),name="a4weights")
-a8Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.35),name="a8weights")
+a1Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.1),name="a1weights")
+a2Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.1),name="a2weights")
+a3Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.1),name="a3weights")
+a4Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.1),name="a4weights")
+a8Filters = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.1),name="a8weights")
+
+gamma4 = tf.Variable(1.0,trainable=True)
+beta4 = tf.Variable(0.0, trainable=True)
 
 
 def atrousCNN(data,mode):
@@ -118,14 +121,20 @@ def atrousCNN(data,mode):
 		padding = "same",
 		activation = tf.nn.relu, use_bias = True, bias_initializer = tf.constant_initializer(myBias),name = "conv1")
 	#128x16
-	
-	pool1 = tf.nn.avg_pool(conv1,[1,2,2,1],[1,2,2,1],padding="SAME")
-	dropout1 = tf.layers.dropout(
-	    inputs = pool1,#conv1,
-	    rate = dORate,
-	    training = mode,
-	    name = "dropout1")
-	"""Layer 1.1"""
+
+	if(useUNet):
+		pool1 = tf.nn.avg_pool(conv1,[1,2,2,1],[1,2,2,1],padding="SAME")
+		dropout1 = tf.layers.dropout(
+		    inputs = pool1,#conv1,
+		    rate = dORate,
+		    training = mode,
+		    name = "dropout1")
+	else:
+		dropout1 = tf.layers.dropout(
+			inputs = conv1,
+			rate = dORate,
+			training = mode,
+			name = "dropout1")
 	conv2 = tf.layers.conv2d(
 		inputs = dropout1,
 		filters = convDepth,
@@ -177,26 +186,31 @@ def atrousCNN(data,mode):
 		padding = "same",
 		activation = tf.nn.relu, 
         use_bias = True, bias_initializer = tf.constant_initializer(myBias),name = "conv13")
+	#128x16    
+
+    	# Use batch normalization for Atrous spatial pooling layer
+	mean4, var4 = tf.nn.moments(conv4,axes=[0,1,2])
+	bnorm4 = tf.nn.batch_normalization(conv4,mean4,var4,gamma4,beta4,1e-6,name="bnorm4")
+				
 	dropout4 = tf.layers.dropout(
-	    inputs = conv4,#conv1,
+	    inputs = bnorm4,#conv1,
 	    rate = dORate,
 	    training = mode,
-	    name = "dropout13")#128x16    
+	    name = "dropout13")
 
-    
-	atrous1 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a1Filters,1,"SAME",name='atrous1'))
+	atrous1 = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout4,a1Filters,1,"SAME",name='atrous1'))
 
 	if(useAtrous):
 		"""Parallel atrous convolutions"""
-		atrous2 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a2Filters,2,"SAME",name='atrous2'))
-		atrous3 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a2Filters,3,"SAME",name='atrous3'))
-		atrous4 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a4Filters,4,"SAME",name='atrous4'))
-		atrous8 = tf.nn.relu(tf.nn.atrous_conv2d(dropout4,a8Filters,8,"SAME",name='atrous8'))
+		atrous2 = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout4,a2Filters,2,"SAME",name='atrous2'))
+		atrous3 = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout4,a2Filters,3,"SAME",name='atrous3'))
+		atrous4 = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout4,a4Filters,4,"SAME",name='atrous4'))
+		atrous8 = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout4,a8Filters,8,"SAME",name='atrous8'))
 	
 			
 		dropout5 = tf.layers.dropout(
 			inputs = tf.concat([atrous1,atrous2,atrous4,atrous8],3),
-			rate = dORate,
+			rate = 0.2, # dropout here is especially sensitive
 			training = mode,
 			name = "dropout5")
 	else:
@@ -215,11 +229,11 @@ def atrousCNN(data,mode):
 		bias_initializer = tf.constant_initializer(myBias),name = "conv4")
 	    
 	if(useUNet):
-		res6 =	tf.image.resize_images(conv6,[int(dimX/2),int(dimY/2)])
+		res6 =	tf.image.resize_images(conv6,[int(dimX/4),int(dimY/4)])
 		"""Include skip connection (U-Net architecture) from conv2"""
 		dropout6u = tf.layers.dropout(
-			inputs = tf.concat([conv1,res6],3),
-			rate = dORate,
+			inputs = tf.concat([conv2,res6],3),
+			rate = dORate+0.1,
 			training = mode,
 			name = "dropout4")
 		conv7 = tf.layers.conv2d(
@@ -250,7 +264,7 @@ def atrousCNN(data,mode):
 		"""include skip connection to conv0 (U-Net)"""
 		dropout7u = tf.layers.dropout(
 			inputs = tf.concat([conv0,res7],3),
-			rate = dORate,
+			rate = dORate+0.1,
 			training = mode,
 			name = "dropout7u")#128x16
 		conv8 = tf.layers.conv2d(
@@ -297,7 +311,19 @@ def atrousCNN(data,mode):
 		use_bias = True, 
 		bias_initializer = tf.constant_initializer(myBias),name = "conv6")
 		
-
+	print("conv0 shape: %s"%conv0.shape)
+	print("conv1 shape: %s"%conv1.shape)
+	print("conv2 shape: %s"%conv2.shape)
+	print("conv3 shape: %s"%conv3.shape)
+	print("conv4 shape: %s"%conv4.shape)
+	
+	print("mean4/var4 shape: %s/%s \n values: "%(mean4.shape,var4.shape),mean4,var4)
+	print("bnorm4 shape: %s"%bnorm4.shape)
+	print("atrous shape: %s"%atrous1.shape)
+	print("conv6 shape: %s"%conv6.shape)
+	print("conv7 shape: %s"%conv7.shape)
+	print("conv8 shape: %s"%conv8.shape)
+	print("conv9 shape: %s"%conv9.shape)
 	myOutput = conv9
 	return myOutput
 
@@ -358,7 +384,8 @@ def main(unused_argv):
 				
 				myTemp = (sess.run(loss, feed_dict={data: myVal, learningRate: lR, mode: False}))
 				myLossVal = myMean.eval(feed_dict={inp: myTemp})
-				print("Epoch %i training loss, validation loss: %.3e , %.3e "%(i,myLossTrain,myLossVal))
+				elapsed = time.time() - t0
+				print("Epoch %i training loss, validation loss: %.3e , %.3e , elapsed time: %.2f "%(i,myLossTrain,myLossVal,elapsed))
 
 				recon = sess.run(myOut,feed_dict = {data: myVal, mode: False})
 				plt.figure(figsize=(10,10))
