@@ -29,7 +29,8 @@ tf.app.flags.DEFINE_boolean('useUNet', False,"""Use skip connections?""")
 tf.app.flags.DEFINE_boolean('restore', False,"""Restore previously trained model""")
 tf.app.flags.DEFINE_integer('maxSteps', 1,"""number of epochs""")
 tf.app.flags.DEFINE_integer('dispIt', 20,"""display every nth iteration""")
-tf.app.flags.DEFINE_integer('batchSize', 4,"""Number of entries per minibatch""")
+tf.app.flags.DEFINE_integer('batchSize', 8,"""Number of entries per minibatch""")
+tf.app.flags.DEFINE_float('lR', 3e-5,"""learning rate""")
 
 restore = FLAGS.restore
 useAtrous = FLAGS.useAtrous
@@ -37,7 +38,7 @@ useUNet = FLAGS.useUNet
 dispIt = FLAGS.dispIt
 maxSteps = FLAGS.maxSteps
 batchSize = FLAGS.batchSize
-
+lR = FLAGS.lR
 
 if (useAtrous and useUNet):
 	myModel = "./models/holesAndSkips2/"
@@ -49,16 +50,11 @@ else:
 	myModel = "./models/noHolesNoSkips2/"
 
 
-
-
 # hyperparameters
 mySeed = 1337
-
-#dispIt = 20
-#maxSteps = 61
 dORate = 0.5
-#batchSize = 4
-lR = 1e-3
+atrousdORate = 0.1
+
 # number of kernels per layer
 convDepth = 4
 myBias = 0#1.0
@@ -191,10 +187,11 @@ def atrousCNN(data,mode):
     	# Use batch normalization for Atrous spatial pooling layer
 	mean4, var4 = tf.nn.moments(conv4,axes=[0,1,2])
 	bnorm4 = tf.nn.batch_normalization(conv4,mean4,var4,gamma4,beta4,1e-6,name="bnorm4")
-				
+	
+
 	dropout4 = tf.layers.dropout(
 	    inputs = bnorm4,#conv1,
-	    rate = dORate,
+	    rate = atrousdORate,
 	    training = mode,
 	    name = "dropout13")
 
@@ -210,13 +207,13 @@ def atrousCNN(data,mode):
 			
 		dropout5 = tf.layers.dropout(
 			inputs = tf.concat([atrous1,atrous2,atrous4,atrous8],3),
-			rate = 0.2, # dropout here is especially sensitive
+			rate = atrousdORate, # dropout here is especially sensitive
 			training = mode,
 			name = "dropout5")
 	else:
 		dropout5 = tf.layers.dropout(
 			inputs = atrous1, #tf.concat([atrous1,atrous2,atrous4,atrous8],3),
-			rate = dORate,
+			rate = atrousdORate,
 			training = mode,
 			name = "dropout5")
 	conv6 = tf.layers.conv2d(
