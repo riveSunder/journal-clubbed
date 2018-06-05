@@ -31,6 +31,7 @@ tf.app.flags.DEFINE_integer('maxSteps', 1,"""number of epochs""")
 tf.app.flags.DEFINE_integer('dispIt', 20,"""display every nth iteration""")
 tf.app.flags.DEFINE_integer('batchSize', 8,"""Number of entries per minibatch""")
 tf.app.flags.DEFINE_float('lR', 3e-5,"""learning rate""")
+tf.app.flags.DEFINE_integer('poolStride', 2,"""display every nth iteration""")
 
 restore = FLAGS.restore
 useAtrous = FLAGS.useAtrous
@@ -39,15 +40,16 @@ dispIt = FLAGS.dispIt
 maxSteps = FLAGS.maxSteps
 batchSize = FLAGS.batchSize
 lR = FLAGS.lR
+poolStride = FLAGS.poolStride
 
 if (useAtrous and useUNet):
-	myModel = "./models/holesAndSkips2/"
+	myModel = "./models/holesAndSkips2poolStride%i/"
 elif (useAtrous):
-	myModel = "./models/justHoles2/"
+	myModel = "./models/justHoles2poolStride%i/"
 elif (useUNet):
-	myModel = "./models/justSkips2/"
+	myModel = "./models/justSkips2poolStride%i/"
 else:
-	myModel = "./models/noHolesNoSkips2/"
+	myModel = "./models/noHolesNoSkips2poolStride%i/"
 
 
 # hyperparameters
@@ -66,8 +68,7 @@ dimX = 1024#256#imgHeight
 myChan = 1
 myOutChan = 1
 # ***
-pool1Size = 1#2   
-pool2Size = 1
+
 kern1Size = 3
 kern2Size = 3
 
@@ -102,7 +103,7 @@ def atrousCNN(data,mode):
 		kernel_size = [kern1Size,kern1Size],
 		padding = "same",
 		activation = tf.nn.relu, use_bias = True, bias_initializer = tf.constant_initializer(myBias),name = "conv0")
-	pool0 = tf.nn.avg_pool(conv0,[1,2,2,1],[1,2,2,1],padding="SAME")
+	pool0 = tf.nn.avg_pool(conv0,[1,poolStride,poolStride,1],[1,poolStride,poolStride,1],padding="SAME")
 	dropout0 = tf.layers.dropout(
 	    inputs = pool0,#conv1,
 	    rate = dORate,
@@ -139,7 +140,7 @@ def atrousCNN(data,mode):
 		activation = tf.nn.relu, 
         use_bias = True, bias_initializer = tf.constant_initializer(myBias),name = "conv11")
 	if (useUNet):
-		pool2 = tf.nn.avg_pool(conv2,[1,2,2,1],[1,2,2,1],padding="SAME")
+		pool2 = tf.nn.avg_pool(conv2,[1,poolStride,poolStride,1],[1,poolStride,poolStride,1],padding="SAME")
 
 		dropout2 = tf.layers.dropout(
 		    inputs = pool2,#conv1,
@@ -162,7 +163,7 @@ def atrousCNN(data,mode):
         bias_initializer = tf.constant_initializer(myBias),name = "conv12")
 
 	if (useUNet):
-		pool3 = tf.nn.avg_pool(conv3,[1,2,2,1],[1,2,2,1],padding="SAME")
+		pool3 = tf.nn.avg_pool(conv3,[1,poolStride,poolStride,1],[1,poolStride,poolStride,1],padding="SAME")
 		dropout3 = tf.layers.dropout(
 		    inputs = pool3,#conv1,
 		    rate = dORate,
