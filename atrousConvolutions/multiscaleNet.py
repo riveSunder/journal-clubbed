@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 FLAGS = tf.app.flags.FLAGS
 
 # User defined flags
-tf.app.flags.DEFINE_string('model','DAC',"""Model architecture. Choices: DAC, ASPP, UNet, MDAC""")
+tf.app.flags.DEFINE_string('model','MDAC',"""Model architecture. Choices: DAC, ASPP, UNet, MDAC""")
 tf.app.flags.DEFINE_boolean('restore', False,"""Restore previously trained model""")
 tf.app.flags.DEFINE_integer('maxSteps', 100,"""number of epochs""")
 tf.app.flags.DEFINE_integer('dispIt', 20,"""display every nth iteration""")
@@ -42,11 +42,11 @@ myModel = FLAGS.model
 if (myModel == 'DAC'):
 	myModelFN = "./models/multiscale/DAC/"
 elif (myModel == 'ASPP'):
-	myModel = "./models/multiscale/ASPP/"
+	myModelFN = "./models/multiscale/ASPP/"
 elif (myModel == 'UNet'):
-	myModel = "./models/multiscale/UNet/"
+	myModelFN = "./models/multiscale/UNet/"
 else:
-	myModel = "./models/multiscale/MDAC/"
+	myModelFN = "./models/multiscale/MDAC/"
 
 
 # hyperparameters
@@ -59,8 +59,8 @@ convDepth = 4
 myBias = 0#1.0
 
 # Image characteristics
-dimY = 1344#336#672#imgWidth
-dimX = 1024#256#imgHeight
+dimY = 672#1344#336#672#imgWidth
+dimX = 512#1024#256#imgHeight
 myChan = 1
 myOutChan = 1
 # ***
@@ -78,26 +78,41 @@ mode = tf.placeholder("bool",name="myMode")
 # Define atrous conv filtes
 
 #  convolution kernels from layer 1 to layer 2
-aFilters12_1 = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.1),name="a1weights")
-aFilters12_2 = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.1),name="a1weights")
+aFilters12_a = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.1),name="a12aweights")
+aFilters12_b = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.1),name="a12bweights")
 
-# atrous convolution kernels from layer 2 to layer 3
-aFilters23_1 = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.1),name="a2weights")
-aFilters23_2 = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.1),name="a2weights")
-aFilters23_3 = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.1),name="a2weights")
+if(myModel == 'MDAC'):
+	# atrous convolution kernels from layer 2 to layer 3
+	aFilters23_a = tf.Variable(tf.random_normal([3, 3,2*convDepth,convDepth], stddev=0.1),name="a23aweights")
+	aFilters23_b = tf.Variable(tf.random_normal([3, 3,2*convDepth,convDepth], stddev=0.1),name="a23bweights")
+	aFilters23_c = tf.Variable(tf.random_normal([3, 3,2*convDepth,convDepth], stddev=0.1),name="a23cweights")
 
-# atrous convolution kernels from layer 3 to layer 4
-aFilters34_1 = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.1),name="a3weights")
-aFilters34_2 = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.1),name="a4weights")
+	# atrous convolution kernels from layer 3 to layer 4
+	aFilters34_a = tf.Variable(tf.random_normal([3, 3,3*convDepth,convDepth], stddev=0.1),name="a34aweights")
+	aFilters34_b = tf.Variable(tf.random_normal([3, 3,3*convDepth,convDepth], stddev=0.1),name="a34bweights")
+	aFilters34_c = tf.Variable(tf.random_normal([3, 3,3*convDepth,convDepth], stddev=0.1),name="a34cweights")
+elif(myModel == 'UNet'):
+		# atrous convolution kernels from layer 2 to layer 3
+	aFilters23_a = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.1),name="a23aweights")
+	aFilters23_b = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.1),name="a23bweights")
+	aFilters23_c = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.1),name="a23cweights")
 
-gamma4 = tf.Variable(1.0,trainable=True)
-beta4 = tf.Variable(0.0, trainable=True)
+	# atrous convolution kernels from layer 3 to layer 4
+	aFilters34_a = tf.Variable(tf.random_normal([3, 3,2*convDepth,convDepth], stddev=0.1),name="a34aweights")
+	aFilters34_b = tf.Variable(tf.random_normal([3, 3,2*convDepth,convDepth], stddev=0.1),name="a34bweights")
+	aFilters34_c = tf.Variable(tf.random_normal([3, 3,convDepth,convDepth], stddev=0.1),name="a34cweights")
+
+aFilters7 = tf.Variable(tf.random_normal([3, 3,4*convDepth,1], stddev=0.1),name="a34aweights")
+
+# For use with batch-norm
+#gamma4 = tf.Variable(1.0,trainable=True)
+#beta4 = tf.Variable(0.0, trainable=True)
 
 
-def atrousCNN(data,mode):
+def multiscaleNet(data,mode):
 	# mode = false apply dropout
 	# mode = true don't apply dropout, i.e. for evaluation/test
-	
+	#tf.image.resize_images(data,[dimX,dimY])
 	inputLayer = tf.reshape(data,[-1,dimX,dimY,myChan])
 	
 	"""Layer 0"""
@@ -131,7 +146,7 @@ def atrousCNN(data,mode):
 	#128x16
 
 	if(myModel == 'UNet'):
-		# continue pooling if using UNet skip connections
+		# continue pooling when using UNet skip connections
 		pool1 = tf.nn.max_pool(conv1,[1,poolStride,poolStride,1],
 			[1,poolStride,poolStride,1],padding="SAME")
 		dropout1 = tf.layers.dropout(
@@ -147,187 +162,141 @@ def atrousCNN(data,mode):
 			name = "dropout1")
 
 	if(myModel == 'MDAC'):
-		
-		
-	conv2 = tf.layers.conv2d(
-		inputs = dropout1,
+		# multi-scale convolutions 
+		conv2a = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout1,aFilters12_a,1,"SAME",name='atrous2a'))
+		conv2b = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout1,aFilters12_b,poolStride,"SAME",name='atrous2b'))
+		conv2 = tf.concat([conv2a,conv2b],3)
+		pool2 = conv2 # no pooling
+
+	elif(myModel == 'UNet'):
+		# no dilations for UNet architecture, followed by pooling
+		conv2 = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout1,aFilters12_a,1,"SAME"))
+		pool2 = tf.nn.max_pool(conv1,[1,poolStride,poolStride,1],
+			[1,poolStride,poolStride,1],padding="SAME")
+
+
+	dropout2 = tf.layers.dropout(
+	    inputs = pool2,#conv1,
+	    rate = dORate,
+	    training = mode,
+	    name = "dropout2")#128x16
+
+	if (myModel == 'MDAC'):
+		# multi-scale convolutions 
+		conv3a = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout2,aFilters23_a,1,"SAME",name='atrous3a'))
+		conv3b = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout2,aFilters23_b,poolStride,"SAME",name='atrous3b'))
+		conv3c = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout2,aFilters23_c,2*poolStride,"SAME",name='atrous3c'))
+
+		conv3 = tf.concat([conv3a,conv3b,conv3c],3)
+		up3 = conv3 
+
+	elif(myModel == 'UNet'):
+		# no multiscale convs, but double up on total kernels
+		conv3a = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout2,aFilters23_a,1,"SAME"))
+		conv3b = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout2,aFilters23_b,1,"SAME"))
+		conv3 = tf.concat([conv3a,conv3b],3)
+		up3 = tf.image.resize_images(conv3,[int(dimX/4),int(dimY/4)])
+
+	dropout3 = tf.layers.dropout(
+	    inputs = up3,#conv1,
+	    rate = dORate,
+	    training = mode,
+	    name = "dropout3")
+
+	if(myModel == 'MDAC'):
+		# multi-scale convolutions 
+		conv4a = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout3,aFilters34_a,1,"SAME",name='atrous4a'))
+		conv4b = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout3,aFilters34_b,2*poolStride,"SAME",name='atrous4b'))
+		conv4c = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout3,aFilters34_c,3*poolStride,"SAME",name='atrous4c'))
+
+		conv4 = tf.concat([conv4a,conv4b,conv4c],3)
+		up4 = conv4 # no pooling
+
+	elif(myModel == 'UNet'):
+		# no multiscale convs, but double up on total kernels
+		conv4a = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout3,aFilters34_a,1,"SAME"))
+		conv4b = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout3,aFilters34_b,1,"SAME"))
+		# UNet style skip connection
+		conv4c = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout2,aFilters34_c,1,"SAME"))
+		conv4 = tf.concat([conv4a,conv4b,conv4c],3)
+		up4 = tf.image.resize_images(conv4,[int(dimX/2),int(dimY/2)])
+
+			#tf.nn.max_pool(conv4,[1,poolStride,poolStride,1],
+			#[1,poolStride,poolStride,1],padding="SAME")
+
+	dropout4 = tf.layers.dropout(
+	    inputs = up4,#conv1,
+	    rate = dORate,
+	    training = mode,
+	    name = "dropout4")
+	
+	if(myModel == 'UNet'):
+		input5 = tf.layers.dropout(
+			tf.concat([up4,conv1],3),
+			rate = dORate,
+			training = mode,
+			name = "input5")
+	else:
+		input5 = dropout4
+
+	conv5 = tf.layers.conv2d(
+		inputs = input5,
+		filters = convDepth*4,
+		kernel_size = [kern1Size,kern1Size],
+		padding = "same",
+		activation = tf.nn.relu, use_bias = True, 
+	        bias_initializer = tf.constant_initializer(myBias),name = "conv5")
+	
+	#if(myModel == 'UNet'):
+	up5 = tf.image.resize_images(conv4,[int(dimX),int(dimY)])
+	#else:
+	#	up5 = conv5
+
+	dropout5 = tf.layers.dropout(
+		inputs = up5,
+		rate = dORate,
+		training = mode,
+		name = "dropout4")	
+
+	if(myModel == 'UNet'):
+		input6 = tf.layers.dropout(
+			tf.concat([up5,conv0],3),
+			rate = dORate,
+			training = mode,
+			name = "input6")
+	else:
+		input6 = dropout5
+
+	conv6 = tf.layers.conv2d(
+		inputs = input6,
 		filters = convDepth*4,
 		kernel_size = [kern1Size,kern1Size],
 		padding = "same",
 		activation = tf.nn.relu, 
-	        use_bias = True, 
+		use_bias = True, 
 		bias_initializer = tf.constant_initializer(myBias),
-		name = "conv11")
-	if (useUNet):
-		pool2 = tf.nn.avg_pool(conv2,[1,poolStride,poolStride,1],
-			[1,poolStride,poolStride,1],padding="SAME")
+		name = "conv6")
 
-		dropout2 = tf.layers.dropout(
-		    inputs = pool2,#conv1,
-		    rate = dORate,
-		    training = mode,
-		    name = "dropout11")#128x16
-	else:
-		dropout2 = tf.layers.dropout(
-		    inputs = conv2,#conv1,
-		    rate = dORate,
-		    training = mode,
-		    name = "dropout11")
+	#up6 = tf.image.resize_images(conv6,[int(dimX*2),int(dimY*2)])
 
-	conv3 = tf.layers.conv2d(
-		inputs = dropout2,
-		filters = convDepth,
-		kernel_size = [kern1Size,kern1Size],
-		padding = "same",
-		activation = tf.nn.relu, use_bias = True, 
-        bias_initializer = tf.constant_initializer(myBias),name = "conv12")
+	dropout6 = tf.layers.dropout(
+		inputs = conv6,
+		rate = dORate/2,
+		training = mode,
+		name = "dropout6")
 
-	if (useUNet):
-		pool3 = tf.nn.avg_pool(conv3,[1,poolStride,poolStride,1],[1,poolStride,poolStride,1],padding="SAME")
-		dropout3 = tf.layers.dropout(
-		    inputs = pool3,#conv1,
-		    rate = dORate,
-		    training = mode,
-		    name = "dropout3")#128x16
-	else:
-		dropout3 = tf.layers.dropout(
-		    inputs = conv3,#conv1,
-		    rate = dORate,
-		    training = mode,
-		    name = "dropout12")#128x16
-    	
-	conv4 = tf.layers.conv2d(
-		inputs = dropout3,
-		filters = convDepth,
-		kernel_size = [kern1Size,kern1Size],
-		padding = "same",
-		activation = tf.nn.relu, 
-        use_bias = True, bias_initializer = tf.constant_initializer(myBias),name = "conv13")
-	#128x16    
-
-    	# Use batch normalization for Atrous spatial pooling layer
-	mean4, var4 = tf.nn.moments(conv4,axes=[0,1,2])
-	bnorm4 = tf.nn.batch_normalization(conv4,mean4,var4,gamma4,beta4,1e-6,name="bnorm4")
-	
-
-	dropout4 = tf.layers.dropout(
-	    inputs = bnorm4,#conv1,
-	    rate = atrousdORate,
-	    training = mode,
-	    name = "dropout13")
-
-	atrous1 = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout4,a1Filters,1,"SAME",name='atrous1'))
-
-	if(useAtrous):
-		"""Parallel atrous convolutions"""
-		atrous2 = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout4,a2Filters,2,"SAME",name='atrous2'))
-		atrous3 = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout4,a2Filters,3,"SAME",name='atrous3'))
-		atrous4 = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout4,a4Filters,4,"SAME",name='atrous4'))
-		atrous8 = tf.nn.leaky_relu(tf.nn.atrous_conv2d(dropout4,a8Filters,8,"SAME",name='atrous8'))
-	
-			
-		dropout5 = tf.layers.dropout(
-			inputs = tf.concat([atrous1,atrous2,atrous4,atrous8],3),
-			rate = atrousdORate, # dropout here is especially sensitive
-			training = mode,
-			name = "dropout5")
-	else:
-		dropout5 = tf.layers.dropout(
-			inputs = atrous1, #tf.concat([atrous1,atrous2,atrous4,atrous8],3),
-			rate = atrousdORate,
-			training = mode,
-			name = "dropout5")
-	conv6 = tf.layers.conv2d(
-		inputs = dropout5,
-		filters = convDepth,
-		kernel_size = [kern1Size,kern1Size],
-		padding = "same",
-		activation = tf.nn.relu, 
-		use_bias = True, 
-		bias_initializer = tf.constant_initializer(myBias),name = "conv4")
-	    
-	if(useUNet):
-		res6 =	tf.image.resize_images(conv6,[int(dimX/4),int(dimY/4)])
-		"""Include skip connection (U-Net architecture) from conv2"""
-		dropout6u = tf.layers.dropout(
-			inputs = tf.concat([conv2,res6],3),
-			rate = dORate+0.1,
-			training = mode,
-			name = "dropout4")
-		conv7 = tf.layers.conv2d(
-			inputs = dropout6u,
-			filters = convDepth,
-			kernel_size = [kern1Size,kern1Size],
-			padding = "same",
-			activation = tf.nn.relu, 
-			use_bias = True, 
-			bias_initializer = tf.constant_initializer(myBias),name = "conv5")	
-	else:
-		res6 =	tf.image.resize_images(conv6,[dimX,dimY])
-		dropout6 = tf.layers.dropout(
-			inputs = res6,
-			rate = dORate,
-			training = mode,
-			name = "dropout4")
-		conv7 = tf.layers.conv2d(
-			inputs = dropout6,
-			filters = convDepth,
-			kernel_size = [kern1Size,kern1Size],
-			padding = "same",
-			activation = tf.nn.relu, 
-			use_bias = True, 
-			bias_initializer = tf.constant_initializer(myBias),name = "conv5")
-	if(useUNet):
-		res7 =	tf.image.resize_images(conv6,[int(dimX),int(dimY)])
-		"""include skip connection to conv0 (U-Net)"""
-		dropout7u = tf.layers.dropout(
-			inputs = tf.concat([conv0,res7],3),
-			rate = dORate+0.1,
-			training = mode,
-			name = "dropout7u")#128x16
-		conv8 = tf.layers.conv2d(
-			inputs = dropout7u,
-			filters = convDepth,
-			kernel_size = [kern1Size,kern1Size],
-			padding = "same",
-			activation = tf.nn.relu, 
-			use_bias = True, 
-			bias_initializer = tf.constant_initializer(myBias),name = "conv8")
-		dropout8 = tf.layers.dropout(
-			inputs = conv8,
-			rate = dORate,
-			training = mode,
-			name = "dropout8")	
-
-	else:
-		dropout7 = tf.layers.dropout(
-			inputs = conv7,
-			rate = dORate,
-			training = mode,
-			name = "dropout7")	
-
-		conv8 = tf.layers.conv2d(
-			inputs = dropout7,
-			filters = convDepth,
-			kernel_size = [kern1Size,kern1Size],
-			padding = "same",
-			activation = tf.nn.relu, 
-			use_bias = True, 
-			bias_initializer = tf.constant_initializer(myBias),name = "conv8")
-		dropout8 = tf.layers.dropout(
-			inputs = conv8,
-			rate = dORate,
-			training = mode,
-			name = "dropout8")	
-
-	conv9 = tf.layers.conv2d(
-		inputs = dropout8,
-		filters = 1,
-		kernel_size = [kern1Size,kern1Size],
-		padding = "same",
-		activation = None, 
-		use_bias = True, 
-		bias_initializer = tf.constant_initializer(myBias),name = "conv6")
+	# Linear output layer
+	output = tf.nn.atrous_conv2d(dropout6,aFilters7,1,"SAME")
+	"""tf.layers.conv2d(
+	inputs = dropout6,
+	filters = 1,
+	kernel_size = [kern1Size,kern1Size],
+	padding = "same",
+	activation = None, 
+	use_bias = True, 
+	bias_initializer = tf.constant_initializer(myBias),
+	name = "conv7")"""
+	#output = conv7
 		
 	print("conv0 shape: %s"%conv0.shape)
 	print("conv1 shape: %s"%conv1.shape)
@@ -335,17 +304,18 @@ def atrousCNN(data,mode):
 	print("conv3 shape: %s"%conv3.shape)
 	print("conv4 shape: %s"%conv4.shape)
 	
-	print("mean4/var4 shape: %s/%s \n values: "%(mean4.shape,var4.shape),mean4,var4)
-	print("bnorm4 shape: %s"%bnorm4.shape)
-	print("atrous shape: %s"%atrous1.shape)
+	#print("mean4/var4 shape: %s/%s \n values: "%(mean4.shape,var4.shape),mean4,var4)
+	#print("bnorm4 shape: %s"%bnorm4.shape)
+	#print("atrous shape: %s"%atrous1.shape)
+	print("conv5 shape: %s"%conv5.shape)
 	print("conv6 shape: %s"%conv6.shape)
-	print("conv7 shape: %s"%conv7.shape)
-	print("conv8 shape: %s"%conv8.shape)
-	print("conv9 shape: %s"%conv9.shape)
-	myOutput = conv9
-	return myOutput
+	print("conv7 shape: %s"%output.shape)
+	#print("conv7 shape: %s"%conv8.shape)
+	#print("conv8 shape: %s"%conv9.shape)
+	
+	return output
 
-myOut = atrousCNN(data,mode)
+myOut = multiscaleNet(data,mode)
 
 print("output shape",np.shape(myOut))	
 
@@ -372,8 +342,8 @@ def main(unused_argv):
 		#tf.initialize_all_variables().run() 
 		sess.run(init)
 		lR = 3e-5
-		myX = np.load('./coelTrain.npy')
-		myVal = np.load('./coelVal.npy')
+		myX = np.load('./coelTrain2.npy')
+		myVal = np.load('./coelVal2.npy')
 		myMinV = np.min(myVal)
 		
 		myMaxV = np.max(myVal-myMinV)
@@ -394,7 +364,7 @@ def main(unused_argv):
 				sess.run(trainOp, feed_dict = {data: input_, learningRate: lR, mode: True})
 
 			if(i% dispIt ==0):
-				mySaver.save(sess,myModel,global_step=i)			
+				mySaver.save(sess,myModelFN,global_step=i)			
 				inp = tf.placeholder(tf.float32)
 				myMean = tf.reduce_mean(inp)
 				myTemp = (sess.run(loss, feed_dict={data: input_, learningRate: lR, mode: False}))
@@ -416,10 +386,11 @@ def main(unused_argv):
 					plt.imshow(recon[ck,:,:,0],cmap="gray")
 
 				
-				plt.savefig("./figs/epoch%iAtrous%sUNet%s.png"%(i,useAtrous,useUNet))
+				plt.savefig("./figs/epoch%i%s.png"%(i,myModel))		
+				#plt.show()
 				plt.clf()
 		# Perform final evaluation
-		myTest = np.load('./coelTest.npy')
+		myTest = np.load('./coelTest2.npy')
 		myMinT = np.min(myTest)
 	
 		myMaxT = np.max(myTest-myMinT)
@@ -453,7 +424,7 @@ def main(unused_argv):
 			plt.title("autodecoded w/ Atrous: %s and UNet: %s"%(str(useAtrous),str(useUNet)))
 			plt.imshow(recon[ck,:,:,0],cmap="gray")
 
-			plt.savefig("./figs/testAE%iAtrous%sUNet%s.png"%(ck,str(useAtrous),str(useUNet)))
+			plt.savefig("./figs/testAE%i%s.png"%(ck,myModel))
 		np.save('coelTestDataAtrous%sUNet%s.npy'%(str(useAtrous),str(useUNet)),recon)
 		plt.clf()
 
