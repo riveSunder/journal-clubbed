@@ -338,7 +338,7 @@ def main(unused_argv):
 	t0 = time.time()
 	with tf.Session() as sess: 
 		if(restore):
-			mySaver.restore(sess,tf.train.latest_checkpoint(myModel))
+			mySaver.restore(sess,tf.train.latest_checkpoint(myModelFN))
 		#tf.initialize_all_variables().run() 
 		sess.run(init)
 		lR = 3e-5
@@ -411,7 +411,7 @@ def main(unused_argv):
 		elapsed = time.time()-t0
 		print("Final training loss, validation loss, test loss: %.3e , %.3e , %.3e, time elapsed: %.1f s"%(myLossTrain,myLossVal,myLossTest,elapsed))
 		logFile = open("./lossLog.txt",'a')
-		logFile.write("\nAtrous: %s, UNet: %s, Final training loss, validation loss, test loss: %.3e , %.3e , %.3e, time elapsed: %.1f s"%(useAtrous,useUNet, myLossTrain,myLossVal,myLossTest,elapsed))
+		logFile.write("\n%s, Final training loss, validation loss, test loss: %.3e , %.3e , %.3e, time elapsed: %.1f s"%(myModel, myLossTrain,myLossVal,myLossTest,elapsed))
 		recon = sess.run(myOut,feed_dict = {data: myTest, mode: False})
 		print(np.shape(myTest))
 		print(np.shape(recon))
@@ -421,11 +421,11 @@ def main(unused_argv):
 			plt.title("original image")
 			plt.imshow(myTest[ck,:,:,0],cmap="gray")
 			plt.subplot(1,2,2)
-			plt.title("autodecoded w/ Atrous: %s and UNet: %s"%(str(useAtrous),str(useUNet)))
+			plt.title("autodecoded w/  %s"%(myModel))
 			plt.imshow(recon[ck,:,:,0],cmap="gray")
 
 			plt.savefig("./figs/testAE%i%s.png"%(ck,myModel))
-		np.save('coelTestDataAtrous%sUNet%s.npy'%(str(useAtrous),str(useUNet)),recon)
+		np.save(('./output/coelTestData%s.npy'%(myModel)),recon)
 		plt.clf()
 
 	print("finished .. . .")
