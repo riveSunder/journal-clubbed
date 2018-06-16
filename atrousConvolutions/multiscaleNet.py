@@ -40,13 +40,13 @@ poolStride = FLAGS.poolStride
 myModel = FLAGS.model
 
 if (myModel == 'DAC'):
-	myModelFN = "./models/multiscale/DAC/"
+	myModelFN = "./models/multiscale/DAC_EM/"
 elif (myModel == 'ASPP'):
 	myModelFN = "./models/multiscale/ASPP/"
 elif (myModel == 'UNet'):
-	myModelFN = "./models/multiscale/UNet/"
+	myModelFN = "./models/multiscale/UNet_EM/"
 else:
-	myModelFN = "./models/multiscale/MDAC/"
+	myModelFN = "./models/multiscale/MDAC_EM/"
 
 
 # hyperparameters
@@ -58,9 +58,16 @@ atrousdORate = 0.1
 convDepth = 4
 myBias = 0#1.0
 
+if(1):
+	myX = np.load("../datasets/isbiEM/isbiX.npy")
+	myVal = np.load("../datasets/isbiEM/isbiXVal.npy")
+elif(1):
+	myX = np.load('./coelTrain2.npy')
+	myVal = np.load('./coelVal2.npy')
+
 # Image characteristics
-dimY = 672#1344#336#672#imgWidth
-dimX = 512#1024#256#imgHeight
+dimY = myX.shape[1] #256#672#1344#336#672#imgWidth
+dimX = myX.shape[2] #256#512#1024#256#imgHeight
 myChan = 1
 myOutChan = 1
 # ***
@@ -338,12 +345,17 @@ def main(unused_argv):
 	t0 = time.time()
 	with tf.Session() as sess: 
 		if(restore):
+			print("restoring model from disk: ",myModelFN)
 			mySaver.restore(sess,tf.train.latest_checkpoint(myModelFN))
 		#tf.initialize_all_variables().run() 
 		sess.run(init)
-		lR = 3e-5
-		myX = np.load('./coelTrain2.npy')
-		myVal = np.load('./coelVal2.npy')
+		#lR = 3e-5
+		if(1):
+			myX = np.load("../datasets/isbiEM/isbiX.npy")
+			myVal = np.load("../datasets/isbiEM/isbiXVal.npy")
+		elif(1):
+			myX = np.load('./coelTrain2.npy')
+			myVal = np.load('./coelVal2.npy')
 		myMinV = np.min(myVal)
 		
 		myMaxV = np.max(myVal-myMinV)
@@ -390,14 +402,15 @@ def main(unused_argv):
 				#plt.show()
 				plt.clf()
 		# Perform final evaluation
-		myTest = np.load('./coelTest2.npy')
+		myTest = np.load('../datasets/epflEM/epflTestX.npy')
 		myMinT = np.min(myTest)
 	
 		myMaxT = np.max(myTest-myMinT)
 		myTest = (myTest-myMinT)/(myMaxT)
 
 		myTest = np.reshape(myTest, (myTest.shape[0],myTest.shape[1],myTest.shape[2],1))
-	
+		myTest = myTest[0:100,:,:,:]
+		input_ = myX[0:100,:,:,:]#batchSize]
 		inp = tf.placeholder(tf.float32)
 		myMean = tf.reduce_mean(inp)
 		myTemp = (sess.run(loss, feed_dict={data: input_, learningRate: lR, mode: False}))
@@ -405,7 +418,7 @@ def main(unused_argv):
 
 		myTemp = (sess.run(loss, feed_dict={data: myVal, learningRate: lR, mode: False}))
 		myLossVal = myMean.eval(feed_dict={inp: myTemp})
-	
+		
 		myTemp = (sess.run(loss, feed_dict={data: myTest, learningRate: lR, mode: False}))
 		myLossTest = myMean.eval(feed_dict={inp: myTemp})
 		elapsed = time.time()-t0

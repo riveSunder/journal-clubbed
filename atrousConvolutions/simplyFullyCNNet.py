@@ -40,7 +40,7 @@ poolStride = FLAGS.poolStride
 myModel = "fullyCNN" #FLAGS.model
 
 if (myModel == 'fullyCNN'):
-	myModelFN = "./models/multiscale/DAC/"
+	myModelFN = "./models/multiscale/simplyFullyCNNAE/"
 
 
 
@@ -54,8 +54,8 @@ convDepth = 4
 myBias = 0#1.0
 
 # Image characteristics
-dimY = 672#1344#336#672#imgWidth
-dimX = 512#1024#256#imgHeight
+dimY = 256#672#1344#336#672#imgWidth
+dimX = 256#512#1024#256#imgHeight
 myChan = 1
 myOutChan = 1
 # ***
@@ -279,12 +279,17 @@ def main(unused_argv):
 	t0 = time.time()
 	with tf.Session() as sess: 
 		if(restore):
+			print("restoring model from disk: ",myModelFN)		
 			mySaver.restore(sess,tf.train.latest_checkpoint(myModelFN))
 		#tf.initialize_all_variables().run() 
 		sess.run(init)
-		lR = 3e-5
-		myX = np.load('./coelTrain2.npy')
-		myVal = np.load('./coelVal2.npy')
+		#lR = 3e-5
+		if(1):
+			myX = np.load("../datasets/isbiEM/isbiX.npy")
+			myVal = np.load("../datasets/isbiEM/isbiXVal.npy")
+		elif(1):
+			myX = np.load('./coelTrain2.npy')
+			myVal = np.load('./coelVal2.npy')
 		myMinV = np.min(myVal)
 		
 		myMaxV = np.max(myVal-myMinV)
@@ -331,14 +336,19 @@ def main(unused_argv):
 				#plt.show()
 				plt.clf()
 		# Perform final evaluation
-		myTest = np.load('./coelTest2.npy')
+		if(0):
+			myTest = np.load('./coelTest2.npy')
+		elif(1):
+			myTest = np.load('../datasets/epflEM/epflTestX.npy')
+
 		myMinT = np.min(myTest)
 	
 		myMaxT = np.max(myTest-myMinT)
 		myTest = (myTest-myMinT)/(myMaxT)
 
 		myTest = np.reshape(myTest, (myTest.shape[0],myTest.shape[1],myTest.shape[2],1))
-	
+		myTest = myTest[0:100,:,:,:]
+		input_ = myX[0:100,:,:,:]
 		inp = tf.placeholder(tf.float32)
 		myMean = tf.reduce_mean(inp)
 		myTemp = (sess.run(loss, feed_dict={data: input_, learningRate: lR, mode: False}))
