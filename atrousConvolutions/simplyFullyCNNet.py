@@ -280,11 +280,11 @@ def main(unused_argv):
 	#tf.reset_default_graph()
 	t0 = time.time()
 	with tf.Session() as sess: 
+		sess.run(init)
 		if(restore):
 			print("restoring model from disk: ",myModelFN)		
 			mySaver.restore(sess,tf.train.latest_checkpoint(myModelFN))
 		#tf.initialize_all_variables().run() 
-		sess.run(init)
 		#lR = 3e-5
 		if(1):
 			myX = np.load("../datasets/isbiEM/isbiX.npy")
@@ -324,7 +324,7 @@ def main(unused_argv):
 				print("Epoch %i training loss, validation loss: %.3e , %.3e , elapsed time: %.2f "%(i,myLossTrain,myLossVal,elapsed))
 				if(1):
 					trainLogFile = open("./trainLogs/FCNNTrainingLog.txt",'a')
-					trainLogFile.write("%i, %.3f, %.3f, %.3f\n"%(myLossTrain,myLossVal,elapsed))
+					trainLogFile.write("%i, %.3f, %.3f, %.3f\n"%(i,myLossTrain,myLossVal,elapsed))
 					trainLogFile.close()
 				if(dispFigs):
 					recon = sess.run(myOut,feed_dict = {data: myVal, mode: False})
