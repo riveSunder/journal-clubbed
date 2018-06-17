@@ -30,7 +30,9 @@ tf.app.flags.DEFINE_integer('dispIt', 20,"""display every nth iteration""")
 tf.app.flags.DEFINE_integer('batchSize', 8,"""Number of entries per minibatch""")
 tf.app.flags.DEFINE_float('lR', 3e-4,"""learning rate""")
 tf.app.flags.DEFINE_integer('poolStride', 2,"""display every nth iteration""")
+tf.app.flags.DEFINE_boolean('dispFigs', False,"""Whether to save figures""")
 
+dispFigs = FLAGS.dispFigs
 restore = FLAGS.restore
 dispIt = FLAGS.dispIt
 maxSteps = FLAGS.maxSteps
@@ -320,21 +322,25 @@ def main(unused_argv):
 				myLossVal = myMean.eval(feed_dict={inp: myTemp})
 				elapsed = time.time() - t0
 				print("Epoch %i training loss, validation loss: %.3e , %.3e , elapsed time: %.2f "%(i,myLossTrain,myLossVal,elapsed))
-
-				recon = sess.run(myOut,feed_dict = {data: myVal, mode: False})
-				plt.figure(figsize=(10,10))
-				for ck in range(3):
-					plt.subplot(3,2,2*ck+1)
-					plt.title("original image")
-					plt.imshow(myVal[ck,:,:,0],cmap="gray")
-					plt.subplot(3,2,2*ck+2)
-					plt.title("autodecoded")
-					plt.imshow(recon[ck,:,:,0],cmap="gray")
+				if(1):
+					trainLogFile = open("./trainLogs/FCNNTrainingLog.txt",'a')
+					trainLogFile.write("%i, %.3f, %.3f, %.3f\n"%(myLossTrain,myLossVal,elapsed))
+					trainLogFile.close()
+				if(dispFigs):
+					recon = sess.run(myOut,feed_dict = {data: myVal, mode: False})
+					plt.figure(figsize=(10,10))
+					for ck in range(3):
+						plt.subplot(3,2,2*ck+1)
+						plt.title("original image")
+						plt.imshow(myVal[ck,:,:,0],cmap="gray")
+						plt.subplot(3,2,2*ck+2)
+						plt.title("autodecoded")
+						plt.imshow(recon[ck,:,:,0],cmap="gray")
 
 				
-				plt.savefig("./figs/epoch%i%s.png"%(i,myModel))		
-				#plt.show()
-				plt.clf()
+					plt.savefig("./figs/epoch%i%s.png"%(i,myModel))		
+					#plt.show()
+					plt.clf()
 		# Perform final evaluation
 		if(0):
 			myTest = np.load('./coelTest2.npy')
@@ -366,18 +372,19 @@ def main(unused_argv):
 		recon = sess.run(myOut,feed_dict = {data: myTest, mode: False})
 		print(np.shape(myTest))
 		print(np.shape(recon))
-		for ck in range(9):
-			plt.figure(figsize=(10,5))
-			plt.subplot(1,2,1)
-			plt.title("original image")
-			plt.imshow(myTest[ck,:,:,0],cmap="gray")
-			plt.subplot(1,2,2)
-			plt.title("autodecoded w/  %s"%(myModel))
-			plt.imshow(recon[ck,:,:,0],cmap="gray")
+		if(dispFigs):
+			for ck in range(9):
+				plt.figure(figsize=(10,5))
+				plt.subplot(1,2,1)
+				plt.title("original image")
+				plt.imshow(myTest[ck,:,:,0],cmap="gray")
+				plt.subplot(1,2,2)
+				plt.title("autodecoded w/  %s"%(myModel))
+				plt.imshow(recon[ck,:,:,0],cmap="gray")
 
-			plt.savefig("./figs/testAE%i%s.png"%(ck,myModel))
-		np.save(('./output/coelTestData%s.npy'%(myModel)),recon)
-		plt.clf()
+				plt.savefig("./figs/testAE%i%s.png"%(ck,myModel))
+			np.save(('./output/coelTestData%s.npy'%(myModel)),recon)
+			plt.clf()
 
 	print("finished .. . .")
 
