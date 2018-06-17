@@ -342,11 +342,12 @@ def main(unused_argv):
 	#tf.reset_default_graph()
 	t0 = time.time()
 	with tf.Session() as sess: 
+		sess.run(init)		
 		if(restore):
 			print("restoring model from disk: ",myModelFN)
 			mySaver.restore(sess,tf.train.latest_checkpoint(myModelFN))
 		#tf.initialize_all_variables().run() 
-		sess.run(init)
+		
 		#lR = 3e-5
 		if(1):
 			myX = np.load("../datasets/isbiEM/isbiX.npy")
@@ -384,13 +385,13 @@ def main(unused_argv):
 				myLossVal = myMean.eval(feed_dict={inp: myTemp})
 				elapsed = time.time() - t0
 				print("Epoch %i training loss, validation loss: %.3e , %.3e , elapsed time: %.2f "%(i,myLossTrain,myLossVal,elapsed))
-				if(myModel_FN=="./models/multiscale/UNet_EM/"):
+				if(myModelFN=="./models/multiscale/UNet_EM/"):
 					trainLogFile = open("./trainLogs/UNetTrainingLog.txt",'a')
-					trainLogFile.write("%i, %.3f, %.3f, %.3f\n"%(myLossTrain,myLossVal,elapsed))
+					trainLogFile.write("%i, %.3f, %.3f, %.3f\n"%(i,myLossTrain,myLossVal,elapsed))
 					trainLogFile.close()
 				else:
 					trainLogFile = open("./trainLogs/MDACTrainingLog.txt",'a')
-					trainLogFile.write("%i, %.3f, %.3f, %.3f\n"%(myLossTrain,myLossVal,elapsed))
+					trainLogFile.write("%i, %.3f, %.3f, %.3f\n"%(i,myLossTrain,myLossVal,elapsed))
 					trainLogFile.close()
 				if(dispFigs):
 					recon = sess.run(myOut,feed_dict = {data: myVal, mode: False})
