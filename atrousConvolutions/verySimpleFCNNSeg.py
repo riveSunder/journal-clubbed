@@ -93,7 +93,7 @@ aFilters23_c = tf.Variable(tf.random_normal([3, 3,2*convDepth,convDepth], stddev
 aFilters34_a = tf.Variable(tf.random_normal([3, 3,3*convDepth,convDepth], stddev=0.1),name="a34aweights")
 aFilters34_b = tf.Variable(tf.random_normal([3, 3,3*convDepth,convDepth], stddev=0.1),name="a34bweights")
 aFilters34_c = tf.Variable(tf.random_normal([3, 3,3*convDepth,convDepth], stddev=0.1),name="a34cweights")
-aFilters7 = tf.Variable(tf.random_normal([3, 3,4*convDepth,1], stddev=0.1),name="a34aweights")
+aFilters7 = tf.Variable(tf.random_normal([3, 3,4*convDepth,myOutChan], stddev=0.1),name="a34aweights")
 
 # For use with batch-norm
 #gamma4 = tf.Variable(1.0,trainable=True)
@@ -271,6 +271,14 @@ trainOpAE = tf.train.AdamOptimizer(
 interimLoss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=tf.one_hot(indices = tf.cast(targets,tf.int32),depth=myOutChan),logits=myOut)
 
 #loss = tf.reduce_mean(interimLoss)
+print(targets.shape,myOut.shape)
+#loss = tf.reduce_mean(interimLoss)
+reshapedLogits = tf.reshape(myOut,[-1,myOutChan])
+reshapedLabels = tf.reshape(targets,[-1])
+print(reshapedLogits.shape,reshapedLabels.shape)
+reshapedLabels = tf.one_hot(indices = tf.cast(reshapedLabels,tf.int32),depth=myOutChan)
+print(reshapedLogits.shape,reshapedLabels.shape)
+
 reshapedLogits = tf.reshape(myOut,[-1,myOutChan])
 reshapedLabels = tf.reshape(targets,[-1])
 reshapedLabels = tf.one_hot(indices = tf.cast(reshapedLabels,tf.int32),depth=myOutChan)
@@ -338,7 +346,7 @@ def main(unused_argv):
 		myY = myY / np.max(myY)
 		myYVal = myYVal/np.max(myYVal)
 	
-		for i in range(750,maxSteps):
+		for i in range(maxSteps):
 			for ck in range(0,len(myX),batchSize):
 				input_ = myX[ck:ck+batchSize,:,:,:]
 				targets_ = myY[ck:ck+batchSize,:,:]
@@ -378,10 +386,12 @@ def main(unused_argv):
 						#plt.imshow(recon[ck,:,:,0],cmap="gray")
 						plt.subplot(3,3,3*ck+2)
 						plt.title("Segmentation")
-						plt.imshow(myReconLabels[ck+10,:,:],cmap="gray")
-						#myProb = np.exp(recon[15+ck,:,:,1])/(np.exp(recon[15+ck,:,:,1])+np.exp(recon[15+ck,:,:,0]))
-						#print(myProb.shape)						
-						#plt.imshow(myProb)
+						if(i<900):
+							myProb = np.exp(recon[15+ck,:,:,1])/(np.exp(recon[15+ck,:,:,1])+np.exp(recon[15+ck,:,:,0]))
+							plt.imshow(myProb)
+						else:
+							plt.imshow(myReconLabels[ck+15,:,:],cmap="gray")
+					
 						#plt.imshow(myReconLabels[15+ck,:,:],cmap="gray")
 						#plt.colorbar()
 						plt.subplot(3,3,3*ck+3)
@@ -391,11 +401,11 @@ def main(unused_argv):
 
 
 				
-					plt.savefig("./figs/vSimpleEpoch%i%s.png"%(i,myModel))		
+					plt.savefig("./figs/vSimpleEpoch%i%s%s.png"%(i,myModel,sixLayers))		
 					#plt.show()
 					plt.clf()
-	recon = sess.run(myOut,feed_dict = {data: myVal, targets:myYVal, mode: False})
-	np.save("./output/verySimpleFCNNSegVal.npy",recon)	
+		recon = sess.run(myOut,feed_dict = {data: myVal, targets:myYVal, mode: False})
+	np.save("./output/verySimpleFCNNSegVal6Layers%s.npy"%sixLayers,recon)	
 	print("finished .. . .")
 
 
